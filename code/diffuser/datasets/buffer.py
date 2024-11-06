@@ -9,7 +9,7 @@ class ReplayBuffer:
 
     def __init__(self, max_n_episodes, max_path_length, termination_penalty):
         self._dict = {
-            'path_lengths': np.zeros(max_n_episodes, dtype=np.int),
+            'path_lengths': np.zeros(max_n_episodes, dtype=int),
         }
         self._count = 0
         self.max_n_episodes = max_n_episodes
@@ -78,6 +78,7 @@ class ReplayBuffer:
             self._dict[key][self._count, :path_length] = array
 
         ## penalize early termination
+        self.termination_penalty = None  # TETODO, error if not none so 。。。
         if path['terminals'].any() and self.termination_penalty is not None:
             assert not path['timeouts'].any(), 'Penalized a timeout episode for early termination'
             self._dict['rewards'][self._count, path_length - 1] += self.termination_penalty

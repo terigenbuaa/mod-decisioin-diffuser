@@ -135,15 +135,18 @@ class Trainer(object):
                 logger.log_metrics_summary(metrics, default_stats='mean')
 
             if self.step == 0 and self.sample_freq:
-                self.render_reference(self.n_reference)
+                pass
+                # self.render_reference(self.n_reference)
 
             if self.sample_freq and self.step % self.sample_freq == 0:
                 if self.model.__class__ == diffuser.models.diffusion.GaussianInvDynDiffusion:
-                    self.inv_render_samples()
+                    # self.inv_render_samples()
+                    pass
                 elif self.model.__class__ == diffuser.models.diffusion.ActionGaussianDiffusion:
                     pass
                 else:
-                    self.render_samples()
+                    # self.render_samples()
+                    pass
 
             self.step += 1
 

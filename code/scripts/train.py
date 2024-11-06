@@ -47,7 +47,7 @@ def main(**deps):
     )
 
     dataset = dataset_config()
-    renderer = render_config()
+    # renderer = render_config()
     observation_dim = dataset.observation_dim
     action_dim = dataset.action_dim
 
@@ -150,7 +150,8 @@ def main(**deps):
 
     diffusion = diffusion_config(model)
 
-    trainer = trainer_config(diffusion, dataset, renderer)
+    # trainer = trainer_config(diffusion, dataset, renderer)
+    trainer = trainer_config(diffusion, dataset, None)
 
     # -----------------------------------------------------------------------------#
     # ------------------------ test forward & backward pass -----------------------#

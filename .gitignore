@@ -1,0 +1,8 @@
+__pycache__
+weights
+*.log
+*.pkl
+*.pt
+*.err
+*.vscode
+__prefix__
