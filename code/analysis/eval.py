@@ -1,4 +1,6 @@
 if __name__ == '__main__':
+    import os
+    cwd = os.getcwd()
     from ml_logger import logger, instr, needs_relaunch
     from analysis import RUN
     import jaynes
@@ -6,6 +8,7 @@ if __name__ == '__main__':
     from config.locomotion_config import Config
     from params_proto.neo_hyper import Sweep
 
+    os.chdir(cwd)  # otherwise can't find default_inv.jsonl
     sweep = Sweep(RUN, Config).load("default_inv.jsonl")
 
     for kwargs in sweep:

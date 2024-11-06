@@ -8,6 +8,11 @@ import gym
 from config.locomotion_config import Config
 from diffuser.utils.arrays import to_torch, to_np, to_device
 from diffuser.datasets.d4rl import suppress_output
+from utils import set_seed, set_config_for_env
+
+from diffuser.datasets.grid import make_env, state_processer, grid_config, my_agent
+from diffuser.datasets.data_encoder_decoder import load_encode_model, encode_data
+
 
 def evaluate(**deps):
     from ml_logger import logger, RUN
@@ -28,12 +33,25 @@ def evaluate(**deps):
         prefix = f'predict_x0_{Config.n_diffusion_steps}_1000000.0'
 
     loadpath = os.path.join(Config.bucket, logger.prefix, 'checkpoint')
-    
+    # home_dir = os.path.expanduser("~")
+    # loadpath = 'grid-diffuser/weights/grid/default_inv/encode64/predict_epsilon_200_1000000.0/dropout_0.25/sdata/100/checkpoint_encode64/' # '/home/LAB/terigen/grid-diffuser-tmp-sync/weights/grid/default_inv/encode/predict_epsilon_200_1000000.0/dropout_0.25/sdata/100/checkpoint/'
+ 
+        
     if Config.save_checkpoints:
         loadpath = os.path.join(loadpath, f'state_{self.step}.pt')
     else:
         loadpath = os.path.join(loadpath, 'state.pt')
+
+    # encoded_dim = 64
+
+    # step = 130000
+    # model_path = os.path.join(Config.bucket, logger.prefix, f'checkpoint_encode64/state_{step}.pt')
+    # encode_model_path = os.path.join(Config.bucket, logger.prefix, f'checkpoint_encode64/encode_model_epoch_{step}_dim_64.pth')
+
+    # encode_model = load_encode_model(encoded_dim, encode_model_path)
+    # encode_model.eval()
     
+   
     state_dict = torch.load(loadpath, map_location=Config.device)
 
     # Load configs
@@ -60,9 +78,10 @@ def evaluate(**deps):
     )
 
     dataset = dataset_config()
-    renderer = render_config()
+    # renderer = render_config()
 
     observation_dim = dataset.observation_dim
+    # observation_dim = 64
     action_dim = dataset.action_dim
 
     if Config.diffusion == 'models.GaussianInvDynDiffusion':
@@ -121,71 +140,74 @@ def evaluate(**deps):
 
     model = model_config()
     diffusion = diffusion_config(model)
-    trainer = trainer_config(diffusion, dataset, renderer)
+    # trainer = trainer_config(diffusion, dataset, renderer)
+    trainer = trainer_config(diffusion, dataset, None)
     logger.print(utils.report_parameters(model), color='green')
     trainer.step = state_dict['step']
     trainer.model.load_state_dict(state_dict['model'])
     trainer.ema_model.load_state_dict(state_dict['ema'])
 
-    num_eval = 10
+    num_eval = 1
     device = Config.device
+    episode_rewards = []
+    rounds = []
 
-    env_list = [gym.make(Config.dataset) for _ in range(num_eval)]
-    dones = [0 for _ in range(num_eval)]
-    episode_rewards = [0 for _ in range(num_eval)]
+    # encode_model checkpoint
+    # checkpoint_path = '/home/LAB/terigen/grid2op_mod/grid2op/MakeEnv/checkpoint_epoch_50_encoded_dim_64.pth'
 
-    assert trainer.ema_model.condition_guidance_w == Config.condition_guidance_w
-    returns = to_device(Config.test_ret * torch.ones(num_eval, 1), device)
+    for i in range(20):
+        episode_reward = 0
+        param = set_config_for_env(grid_config)
+        env = make_env(param, grid_config)
 
-    t = 0
-    obs_list = [env.reset()[None] for env in env_list]
-    obs = np.concatenate(obs_list, axis=0)
-    recorded_obs = [deepcopy(obs[:, None])]
+        assert trainer.ema_model.condition_guidance_w == Config.condition_guidance_w
+        returns = to_device(Config.test_ret * torch.ones(num_eval, 1), device)
 
-    while sum(dones) <  num_eval:
-        obs = dataset.normalizer.normalize(obs, 'observations')
-        conditions = {0: to_torch(obs, device=device)}
-        samples = trainer.ema_model.conditional_sample(conditions, returns=returns)
-        obs_comb = torch.cat([samples[:, 0, :], samples[:, 1, :]], dim=-1)
-        obs_comb = obs_comb.reshape(-1, 2*observation_dim)
-        action = trainer.ema_model.inv_model(obs_comb)
+        t = 0
+        env.set_id(np.random.randint(0, grid_config.total_chronics, 1)[0])
+        obs = env.reset()
+        env.fast_forward_chronics(np.random.randint(0, grid_config.env_start_range, 1)[0])
 
-        samples = to_np(samples)
-        action = to_np(action)
+        for timestep in range(grid_config.max_timestep):
+    
+            env_obs = env.get_obs()
+            origin_obs, _ = state_processer(env_obs)
+            # Reshape the observation from [409] to [1, 409]
+            origin_obs = origin_obs.reshape(1, -1)
+            # origin_obs = dataset.normalizer.normalize(torch.Tensor.cpu(origin_obs), 'observations')
+            origin_obs = dataset.normalizer.normalize(origin_obs, 'observations')
 
-        action = dataset.normalizer.unnormalize(action, 'actions')
+            # obs = encode_data(encode_model, to_torch(origin_obs))
+            obs = origin_obs
+            # import pdb; pdb.set_trace()
+            
+            conditions = {0: to_torch(obs, device=device)}
+            samples = trainer.ema_model.conditional_sample(conditions, returns=returns) 
+            obs_comb = torch.cat([samples[:, 0, :], samples[:, 1, :]], dim=-1)
+            obs_comb = obs_comb.reshape(-1, 2*observation_dim)
+            action = trainer.ema_model.inv_model(obs_comb)
 
-        if t == 0:
-            normed_observations = samples[:, :, :]
-            observations = dataset.normalizer.unnormalize(normed_observations, 'observations')
-            savepath = os.path.join('images', 'sample-planned.png')
-            renderer.composite(savepath, observations)
+            samples = to_np(samples)
+            action = to_np(action)
 
-        obs_list = []
-        for i in range(num_eval):
-            this_obs, this_reward, this_done, _ = env_list[i].step(action[i])
-            obs_list.append(this_obs[None])
+            action = dataset.normalizer.unnormalize(action, 'actions')
+
+            action_low, action_high = my_agent.process_action_space(env_obs)
+            interact_action, _ = my_agent.process_action(obs=env_obs , action=action[0], action_low=action_low, action_high=action_high)
+            this_obs, this_reward, this_done, info = env.step(interact_action) 
+            logger.print(f"timestep:{timestep},this_reward:{this_reward},this_done:{this_done}")
+            origin_obs, _ = state_processer(this_obs)
+            episode_reward += this_reward
+
             if this_done:
-                if dones[i] == 1:
-                    pass
-                else:
-                    dones[i] = 1
-                    episode_rewards[i] += this_reward
-                    logger.print(f"Episode ({i}): {episode_rewards[i]}", color='green')
-            else:
-                if dones[i] == 1:
-                    pass
-                else:
-                    episode_rewards[i] += this_reward
+                logger.print(f"Episode ({i}): {episode_reward}, rounds: {timestep}", color='green')
+                logger.print(f"----------- info: {info['exception']} ---------------")
+                rounds.append(timestep)
+                episode_rewards.append(episode_reward)
+                break
+    
+        logger.print(f"mean round: {sum(rounds)/len(rounds)}")
+        logger.print(f"mean rtgs: {sum(episode_rewards)/len(episode_rewards)}")
+        
+    # logger.save_pkl() TODO
 
-        obs = np.concatenate(obs_list, axis=0)
-        recorded_obs.append(deepcopy(obs[:, None]))
-        t += 1
-
-    recorded_obs = np.concatenate(recorded_obs, axis=1)
-    savepath = os.path.join('images', f'sample-executed.png')
-    renderer.composite(savepath, recorded_obs)
-    episode_rewards = np.array(episode_rewards)
-
-    logger.print(f"average_ep_reward: {np.mean(episode_rewards)}, std_ep_reward: {np.std(episode_rewards)}", color='green')
-    logger.log_metrics_summary({'average_ep_reward':np.mean(episode_rewards), 'std_ep_reward':np.std(episode_rewards)})
