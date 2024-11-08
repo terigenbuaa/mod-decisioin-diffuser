@@ -12,7 +12,6 @@ from .timer import Timer
 from .cloud import sync_logs
 from ml_logger import logger
 
-
 from ..datasets.data_encoder_decoder import save_encode_model, load_encode_model
 
 def cycle(dl):
@@ -163,7 +162,7 @@ class Trainer(object):
             'step': self.step,
             'model': self.model.state_dict(),
             'ema': self.ema_model.state_dict(),
-            'optimizer': self.optimizer.state_dict() # save optimizer state
+            'optimizer': self.optimizer.state_dict() # save optimizer state,
         }
         savedir = os.path.join(self.bucket, logger.prefix, 'checkpoint')
         os.makedirs(savedir, exist_ok=True)
@@ -175,9 +174,7 @@ class Trainer(object):
         torch.save(data, savepath)
         logger.print(f'[ utils/training ] Saved model to {savepath}')
 
-        save_encode_model(self.model.encode_model, 64, self.step, savedir)
-
-    def load(self, step=None):
+    def load(self):
         '''
             loads model and ema from disk
         '''
