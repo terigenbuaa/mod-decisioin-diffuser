@@ -48,7 +48,8 @@ def main(**deps):
 
     dataset = dataset_config()
     # renderer = render_config()
-    observation_dim = dataset.observation_dim
+    # observation_dim = dataset.observation_dim
+    observation_dim = 64
     action_dim = dataset.action_dim
 
     # -----------------------------------------------------------------------------#
