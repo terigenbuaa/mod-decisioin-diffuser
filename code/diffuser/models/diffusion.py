@@ -359,9 +359,14 @@ class GaussianInvDynDiffusion(nn.Module):
             # Example usage
             encoded_dim = 64 # Use the best encoded_dim found during training
             home_dir = os.path.expanduser("~")
-            checkpoint_path = os.path.join(home_dir, "grid-diffuser/code/diffuser/datasets/final_checkpoint_epoch_200_encoded_dim_64.pth")  
+            checkpoint_path = os.path.join(home_dir, "mod-decision-diffuser/code/diffuser/datasets/final_checkpoint_epoch_200_encoded_dim_64.pth")  
             # checkpoint_path = os.path.join(home_dir, "grid2op_mod/grid2op/MakeEnv/checkpoint_epoch_50_encoded_dim_64.pth")
-            self.encode_model = load_encode_model(encoded_dim, checkpoint_path)           
+            self.encode_model = load_encode_model(encoded_dim, checkpoint_path)    
+
+            # freeze encode model
+            for param in self.encode_model.parameters():
+                param.requires_grad = False
+                   
             self.observation_dim = encoded_dim
 
     def get_loss_weights(self, discount):
