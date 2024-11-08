@@ -51,9 +51,9 @@ class Config(ParamsProto):
     gradient_accumulate_every = 2
     ema_decay = 0.995
     log_freq = 1000
-    save_freq = 10000
+    save_freq = 5000
     sample_freq = 10000
     n_saves = 5
     save_parallel = False
     n_reference = 8
-    save_checkpoints = False
+    save_checkpoints = True

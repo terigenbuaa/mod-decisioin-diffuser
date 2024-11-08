@@ -38,7 +38,7 @@ def evaluate(**deps):
  
         
     if Config.save_checkpoints:
-        loadpath = os.path.join(loadpath, f'state_{self.step}.pt')
+        loadpath = os.path.join(loadpath, f'state_{Config.load_step}.pt')
     else:
         loadpath = os.path.join(loadpath, 'state.pt')
 

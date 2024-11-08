@@ -197,7 +197,7 @@ def load_encode_model(encoded_dim, checkpoint_path):
     # model.eval()  # Set the model to evaluation mode
     return model
 
-def save_encode_model(model, encoded_dim, epoch, save_dir=None):
+def save_encode_model(model, encoded_dim, step, save_dir=None):
     if save_dir is None:
         save_dir = os.getcwd()
     
@@ -205,7 +205,7 @@ def save_encode_model(model, encoded_dim, epoch, save_dir=None):
     os.makedirs(save_dir, exist_ok=True)
     
     # Save full model
-    model_path = os.path.join(save_dir, f'encode_model_epoch_{epoch}_dim_{encoded_dim}.pth')
+    model_path = os.path.join(save_dir, f'encode_model_epoch_{step}_dim_{encoded_dim}.pth')
     torch.save(model.state_dict(), model_path)
     
 

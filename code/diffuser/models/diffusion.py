@@ -3,7 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import pdb
-
+import os
 import diffuser.utils as utils
 from .helpers import (
     cosine_beta_schedule,
@@ -11,6 +11,8 @@ from .helpers import (
     apply_conditioning,
     Losses,
 )
+
+from diffuser.datasets.data_encoder_decoder import load_encode_model, encode_data
 
 class GaussianDiffusion(nn.Module):
     def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
@@ -292,7 +294,7 @@ class GaussianInvDynDiffusion(nn.Module):
     def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
         loss_type='l1', clip_denoised=False, predict_epsilon=True, hidden_dim=256,
         action_weight=1.0, loss_discount=1.0, loss_weights=None, returns_condition=False,
-        condition_guidance_w=0.1, ar_inv=False, train_only_inv=False):
+        condition_guidance_w=0.1, ar_inv=False, train_only_inv=False, load_pre_encoder=True):
         super().__init__()
         self.horizon = horizon
         self.observation_dim = observation_dim
@@ -306,6 +308,8 @@ class GaussianInvDynDiffusion(nn.Module):
         else:
             self.inv_model = nn.Sequential(
                 nn.Linear(2 * self.observation_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
                 nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ReLU(),
@@ -350,6 +354,15 @@ class GaussianInvDynDiffusion(nn.Module):
         ## get loss coefficients and initialize objective
         loss_weights = self.get_loss_weights(loss_discount)
         self.loss_fn = Losses['state_l2'](loss_weights)
+
+        if load_pre_encoder:
+            # Example usage
+            encoded_dim = 64 # Use the best encoded_dim found during training
+            home_dir = os.path.expanduser("~")
+            checkpoint_path = os.path.join(home_dir, "grid-diffuser/code/diffuser/datasets/final_checkpoint_epoch_200_encoded_dim_64.pth")  
+            # checkpoint_path = os.path.join(home_dir, "grid2op_mod/grid2op/MakeEnv/checkpoint_epoch_50_encoded_dim_64.pth")
+            self.encode_model = load_encode_model(encoded_dim, checkpoint_path)           
+            self.observation_dim = encoded_dim
 
     def get_loss_weights(self, discount):
         '''
@@ -481,6 +494,7 @@ class GaussianInvDynDiffusion(nn.Module):
         return sample
 
     def p_losses(self, x_start, cond, t, returns=None):
+        cond = encode_data(self.encode_model, cond)
         noise = torch.randn_like(x_start)
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
@@ -519,11 +533,14 @@ class GaussianInvDynDiffusion(nn.Module):
         else:
             batch_size = len(x)
             t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
-            diffuse_loss, info = self.p_losses(x[:, :, self.action_dim:], cond, t, returns)
+            # encode observation
+            x_encoded = encode_data(self.encode_model, x[:,:,self.action_dim:])
+            # x[:,:,self.action_dim:] = x_encoded
+            diffuse_loss, info = self.p_losses(x_encoded, cond, t, returns)
             # Calculating inv loss
-            x_t = x[:, :-1, self.action_dim:]
+            x_t = x_encoded[:, :-1, :]
             a_t = x[:, :-1, :self.action_dim]
-            x_t_1 = x[:, 1:, self.action_dim:]
+            x_t_1 = x_encoded[:, 1:, :]
             x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
             x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
             a_t = a_t.reshape(-1, self.action_dim)

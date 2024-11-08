@@ -12,6 +12,9 @@ from .timer import Timer
 from .cloud import sync_logs
 from ml_logger import logger
 
+
+from ..datasets.data_encoder_decoder import save_encode_model, load_encode_model
+
 def cycle(dl):
     while True:
         for data in dl:
@@ -150,6 +153,7 @@ class Trainer(object):
 
             self.step += 1
 
+
     def save(self):
         '''
             saves model and ema to disk;
@@ -158,30 +162,52 @@ class Trainer(object):
         data = {
             'step': self.step,
             'model': self.model.state_dict(),
-            'ema': self.ema_model.state_dict()
+            'ema': self.ema_model.state_dict(),
+            'optimizer': self.optimizer.state_dict() # save optimizer state
         }
-        savepath = os.path.join(self.bucket, logger.prefix, 'checkpoint')
-        os.makedirs(savepath, exist_ok=True)
+        savedir = os.path.join(self.bucket, logger.prefix, 'checkpoint')
+        os.makedirs(savedir, exist_ok=True)
         # logger.save_torch(data, savepath)
         if self.save_checkpoints:
-            savepath = os.path.join(savepath, f'state_{self.step}.pt')
+            savepath = os.path.join(savedir, f'state_{self.step}.pt')
         else:
-            savepath = os.path.join(savepath, 'state.pt')
+            savepath = os.path.join(savedir, 'state.pt')
         torch.save(data, savepath)
         logger.print(f'[ utils/training ] Saved model to {savepath}')
 
-    def load(self):
+        save_encode_model(self.model.encode_model, 64, self.step, savedir)
+
+    def load(self, step=None):
         '''
             loads model and ema from disk
         '''
-        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint/state.pt')
+        if step is None:
+            step = self.get_max_step()
+        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint_encode64/state_{step}.pt')
+        # import pdb; pdb.set_trace()
         # data = logger.load_torch(loadpath)
-        data = torch.load(loadpath)
+        try:
+            data = torch.load(loadpath)
+        except FileNotFoundError:
+            logger.print(f"Error: Could not find checkpoint file at {loadpath}", color='red')
+            raise
+        except Exception as e:
+            logger.print(f"Error loading checkpoint: {str(e)}", color='red')
+            raise
+        logger.print(f"model loaded from path: {loadpath}")
 
         self.step = data['step']
         self.model.load_state_dict(data['model'])
         self.ema_model.load_state_dict(data['ema'])
+         # Also load optimizer state if it was saved
+        if 'optimizer' in data:
+            self.optimizer.load_state_dict(data['optimizer'])
 
+        self.model.encode_model = load_encode_model(64, os.path.join(self.bucket, logger.prefix, f'checkpoint_encode64/encode_model_epoch_{step}_dim_64.pth'))
+
+        self.epoch = self.step // 10000
+
+        logger.print(f"load done!!!")
     #-----------------------------------------------------------------------------#
     #--------------------------------- rendering ---------------------------------#
     #-----------------------------------------------------------------------------#
