@@ -37,10 +37,11 @@ def evaluate(**deps):
     # loadpath = 'grid-diffuser/weights/grid/default_inv/encode64/predict_epsilon_200_1000000.0/dropout_0.25/sdata/100/checkpoint_encode64/' # '/home/LAB/terigen/grid-diffuser-tmp-sync/weights/grid/default_inv/encode/predict_epsilon_200_1000000.0/dropout_0.25/sdata/100/checkpoint/'
  
         
-    if Config.save_checkpoints:
-        loadpath = os.path.join(loadpath, f'state_{Config.load_step}.pt')
-    else:
-        loadpath = os.path.join(loadpath, 'state.pt')
+    logger.print(f"load_step: {Config.load_step}")
+    # if Config.save_checkpoints:
+    #     loadpath = os.path.join(loadpath, f'state_{Config.load_step}.pt')
+    # else:
+    #     loadpath = os.path.join(loadpath, 'state.pt')
 
     # encoded_dim = 64
 
@@ -52,7 +53,7 @@ def evaluate(**deps):
     # encode_model.eval()
     
    
-    state_dict = torch.load(loadpath, map_location=Config.device)
+    # state_dict = torch.load(loadpath, map_location=Config.device)
 
     # Load configs
     torch.backends.cudnn.benchmark = True
@@ -71,17 +72,17 @@ def evaluate(**deps):
         returns_scale=Config.returns_scale,
     )
 
-    render_config = utils.Config(
-        Config.renderer,
-        savepath='render_config.pkl',
-        env=Config.dataset,
-    )
+    # render_config = utils.Config(
+    #     Config.renderer,
+    #     savepath='render_config.pkl',
+    #     env=Config.dataset,
+    # )
 
     dataset = dataset_config()
     # renderer = render_config()
 
-    observation_dim = dataset.observation_dim
-    # observation_dim = 64
+    # observation_dim = dataset.observation_dim
+    observation_dim = 64
     action_dim = dataset.action_dim
 
     if Config.diffusion == 'models.GaussianInvDynDiffusion':
@@ -143,9 +144,10 @@ def evaluate(**deps):
     # trainer = trainer_config(diffusion, dataset, renderer)
     trainer = trainer_config(diffusion, dataset, None)
     logger.print(utils.report_parameters(model), color='green')
-    trainer.step = state_dict['step']
-    trainer.model.load_state_dict(state_dict['model'])
-    trainer.ema_model.load_state_dict(state_dict['ema'])
+    # trainer.step = state_dict['step']
+    # trainer.model.load_state_dict(state_dict['model'])
+    # trainer.ema_model.load_state_dict(state_dict['ema'])
+    trainer.load(Config.load_step)
 
     num_eval = 1
     device = Config.device
@@ -177,8 +179,8 @@ def evaluate(**deps):
             # origin_obs = dataset.normalizer.normalize(torch.Tensor.cpu(origin_obs), 'observations')
             origin_obs = dataset.normalizer.normalize(origin_obs, 'observations')
 
-            # obs = encode_data(encode_model, to_torch(origin_obs))
-            obs = origin_obs
+            obs = encode_data(trainer.model.encode_model, to_torch(origin_obs))
+            # obs = origin_obs
             # import pdb; pdb.set_trace()
             
             conditions = {0: to_torch(obs, device=device)}

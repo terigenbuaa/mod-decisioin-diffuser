@@ -174,13 +174,15 @@ class Trainer(object):
         torch.save(data, savepath)
         logger.print(f'[ utils/training ] Saved model to {savepath}')
 
-    def load(self):
+        save_encode_model(self.model.encode_model, 64, self.step, savedir)
+
+    def load(self, step=None):
         '''
             loads model and ema from disk
         '''
         if step is None:
             step = self.get_max_step()
-        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint_encode64/state_{step}.pt')
+        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint/state_{step}.pt')
         # import pdb; pdb.set_trace()
         # data = logger.load_torch(loadpath)
         try:
@@ -200,7 +202,7 @@ class Trainer(object):
         if 'optimizer' in data:
             self.optimizer.load_state_dict(data['optimizer'])
 
-        self.model.encode_model = load_encode_model(64, os.path.join(self.bucket, logger.prefix, f'checkpoint_encode64/encode_model_epoch_{step}_dim_64.pth'))
+        # self.model.encode_model = load_encode_model(64, os.path.join(self.bucket, logger.prefix, f'checkpoint/encode_model_epoch_{step}_dim_64.pth'))
 
         self.epoch = self.step // 10000
 
