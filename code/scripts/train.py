@@ -160,11 +160,11 @@ def main(**deps):
 
     utils.report_parameters(model)
 
-    logger.print('Testing forward...', end=' ', flush=True)
-    batch = utils.batchify(dataset[0], Config.device)
-    loss, _ = diffusion.loss(*batch)
-    loss.backward()
-    logger.print('✓')
+    # logger.print('Testing forward...', end=' ', flush=True)
+    # batch = utils.batchify(dataset[0], Config.device)
+    # loss, _ = diffusion.loss(*batch)
+    # loss.backward()
+    # logger.print('✓')
 
     # -----------------------------------------------------------------------------#
     # --------------------------------- main loop ---------------------------------#
@@ -174,5 +174,5 @@ def main(**deps):
 
     for i in range(n_epochs):
         logger.print(f'Epoch {i} / {n_epochs} | {logger.prefix}')
-        trainer.train(n_train_steps=Config.n_steps_per_epoch)
+        trainer.train(i, n_train_steps=Config.n_steps_per_epoch)
 

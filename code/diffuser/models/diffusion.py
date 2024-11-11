@@ -366,10 +366,31 @@ class GaussianInvDynDiffusion(nn.Module):
             logger.print(f"load encode model from {checkpoint_path}")  
 
             # freeze encode model
-            # for param in self.encode_model.parameters():
-            #     param.requires_grad = False
+            for param in self.encode_model.parameters():
+                param.requires_grad = False
                    
             self.observation_dim = encoded_dim
+            self.current_epoch = None
+
+    def update_encoder_freeze(self, epoch):
+        self.current_epoch = epoch
+        if epoch < 4:
+            # Keep all layers frozen for the first 7 epochs
+            return
+        elif epoch < 5:
+            for param in self.encode_model.embedding.parameters():
+                param.requires_grad = True
+                logger.print(f"Unfroze: Updated Embedding Layer {name}: {param.requires_grad}")
+            return
+
+        i = 4
+        for name, param in reversed(list(self.encode_model.transformer.encoder.named_parameters())):
+            i += 1
+            if i - epoch <  0:
+                param.requires_grad = True 
+                logger.print(f"Unfroze: i: {i}; Updated Layer {name}: {param.requires_grad}") 
+            else:              
+                break
 
     def get_loss_weights(self, discount):
         '''
@@ -521,7 +542,15 @@ class GaussianInvDynDiffusion(nn.Module):
 
         return loss, info
 
-    def loss(self, x, cond, returns=None):
+    def loss(self, epoch, x, cond, returns=None):
+        if self.current_epoch != epoch: 
+            new_epoch = True
+            self.current_epoch = epoch
+        else:
+            new_epoch = False
+
+        if new_epoch:
+            self.update_encoder_freeze(self.current_epoch)
         if self.train_only_inv:
             # Calculating inv loss
             x_t = x[:, :-1, self.action_dim:]
