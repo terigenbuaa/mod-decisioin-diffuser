@@ -380,7 +380,7 @@ class GaussianInvDynDiffusion(nn.Module):
         elif epoch < 5:
             for param in self.encode_model.embedding.parameters():
                 param.requires_grad = True
-                logger.print(f"Unfroze: Updated Embedding Layer {name}: {param.requires_grad}")
+                logger.print(f"Unfroze: Updated Embedding Layer: {param.requires_grad}")
             return
 
         i = 4
@@ -551,6 +551,7 @@ class GaussianInvDynDiffusion(nn.Module):
 
         if new_epoch:
             self.update_encoder_freeze(self.current_epoch)
+
         if self.train_only_inv:
             # Calculating inv loss
             x_t = x[:, :-1, self.action_dim:]

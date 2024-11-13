@@ -57,4 +57,4 @@ class Config(ParamsProto):
     save_parallel = False
     n_reference = 8
     save_checkpoints = True
-    load_step = 100000
+    load_step = None

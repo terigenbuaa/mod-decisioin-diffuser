@@ -21,8 +21,9 @@ def evaluate(**deps):
     RUN._update(deps)
     Config._update(deps)
 
-    logger.remove('*.pkl')
-    logger.remove("traceback.err")
+    # logger.remove('*.pkl')
+    # logger.remove("traceback.err")
+    
     logger.log_params(Config=vars(Config), RUN=vars(RUN))
 
     Config.device = 'cuda'
@@ -197,7 +198,7 @@ def evaluate(**deps):
             action_low, action_high = my_agent.process_action_space(env_obs)
             interact_action, _ = my_agent.process_action(obs=env_obs , action=action[0], action_low=action_low, action_high=action_high)
             this_obs, this_reward, this_done, info = env.step(interact_action) 
-            logger.print(f"timestep:{timestep},this_reward:{this_reward},this_done:{this_done}")
+            # logger.print(f"timestep:{timestep},this_reward:{this_reward},this_done:{this_done}")
             origin_obs, _ = state_processer(this_obs)
             episode_reward += this_reward
 
@@ -208,8 +209,8 @@ def evaluate(**deps):
                 episode_rewards.append(episode_reward)
                 break
     
-        logger.print(f"mean round: {sum(rounds)/len(rounds)}")
-        logger.print(f"mean rtgs: {sum(episode_rewards)/len(episode_rewards)}")
+    logger.print(f"mean round: {sum(rounds)/len(rounds)}")
+    logger.print(f"mean rtgs: {sum(episode_rewards)/len(episode_rewards)}")
         
     # logger.save_pkl() TODO
 

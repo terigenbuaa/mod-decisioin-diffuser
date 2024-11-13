@@ -172,7 +172,13 @@ def main(**deps):
 
     n_epochs = int(Config.n_train_steps // Config.n_steps_per_epoch)
 
-    for i in range(n_epochs):
+    if Config.load_step is not None:
+        trainer.load(Config.load_step)
+        epoch = Config.load_step // Config.n_steps_per_epoch    
+    else:
+        epoch = 0
+
+    for i in range(epoch, n_epochs):
         logger.print(f'Epoch {i} / {n_epochs} | {logger.prefix}')
         trainer.train(i, n_train_steps=Config.n_steps_per_epoch)
 

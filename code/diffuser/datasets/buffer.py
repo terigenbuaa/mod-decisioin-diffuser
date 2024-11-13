@@ -78,7 +78,7 @@ class ReplayBuffer:
             self._dict[key][self._count, :path_length] = array
 
         ## penalize early termination
-        self.termination_penalty = None  # TETODO, error if not none so 。。。
+        self.termination_penalty = None  # TETODO, no timeout field in grid dataset
         if path['terminals'].any() and self.termination_penalty is not None:
             assert not path['timeouts'].any(), 'Penalized a timeout episode for early termination'
             self._dict['rewards'][self._count, path_length - 1] += self.termination_penalty
