@@ -8,6 +8,8 @@ from torch.nn import Transformer
 import torch.optim as optim
 from sklearn.model_selection import train_test_split
 
+from torch.utils.tensorboard import SummaryWriter
+
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
@@ -226,6 +228,47 @@ def encode_data(model, obs_data):
         return encoded_data
 
 
+def tb_encode_data(model, obs_data): # madiff_clone env 
+    # Create a SummaryWriter instance
+    writer = SummaryWriter('runs/encoder_graph')
+    
+    # Convert input to torch tensor if needed
+    if not isinstance(obs_data, torch.Tensor):
+        obs_data = torch.tensor(obs_data, dtype=torch.float32)
+    
+    if type(obs_data) == dict:
+        data = obs_data[0]
+    else:
+        data = obs_data
+        
+    # Add a batch dimension if missing
+    if len(data.shape) == 2:
+        data = data.unsqueeze(0)
+
+    # Move data to the same device as the model
+    data = data.to(device)
+    
+    def forward_pass(data):
+        data = data + model.positional_encoding[:, :]
+        embedded_data = model.embedding(data)
+        encoded_data = model.transformer.encoder(embedded_data)
+        return encoded_data
+    
+    # Add graph to tensorboard
+    writer.add_graph(model, (data, data))  # Adding both src and tgt tensors
+    writer.close()
+    
+    # Perform the actual encoding
+    with torch.no_grad():
+        encoded_data = forward_pass(data)
+    
+    if type(obs_data) == dict:
+        obs_data[0] = encoded_data
+        return obs_data
+    else:
+        return encoded_data.squeeze(0) if len(data.shape) == 3 else encoded_data
+
+
 def encode_data_batch(model, data):
     data = np.array(data)
     data = torch.tensor(data, dtype=torch.float32)
@@ -254,16 +297,16 @@ def encode_data_batch(model, data):
     return results
 
 # # Example usage
-# epoch = 200  # Use the best epoch found during training
+epoch = 200  # Use the best epoch found during training
 # encoded_dim = 64 # Use the best encoded_dim found during training
 # home_dir = os.path.expanduser("~")
 
-# model = load_model(encoded_dim, f'final_checkpoint_epoch_{epoch}_encoded_dim_{encoded_dim}.pth')
+model = load_encode_model(encoded_dim, f'final_checkpoint_epoch_{epoch}_encoded_dim_{encoded_dim}.pth')
  
 # data, _ = load_data()
 # data = data['observations']
 
-# encoded_data = encode_data(model, data)
+encoded_data = tb_encode_data(model, data)
 
 # print(encoded_data.shape)
 
