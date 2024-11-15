@@ -372,25 +372,53 @@ class GaussianInvDynDiffusion(nn.Module):
             self.observation_dim = encoded_dim
             self.current_epoch = None
 
+    # def update_encoder_freeze(self, epoch):
+    #     self.current_epoch = epoch
+    #     if epoch < 4:
+    #         # Keep all layers frozen for the first 7 epochs
+    #         return
+    #     elif epoch < 5:
+    #         for param in self.encode_model.embedding.parameters():
+    #             param.requires_grad = True
+    #             logger.print(f"Unfroze: Updated Embedding Layer: {param.requires_grad}")
+    #         return
+
+    #     i = 4
+    #     for name, param in reversed(list(self.encode_model.transformer.encoder.named_parameters())):
+    #         i += 1
+    #         if i - epoch <  0:
+    #             param.requires_grad = True 
+    #             logger.print(f"Unfroze: i: {i}; Updated Layer {name}: {param.requires_grad}") 
+    #         else:              
+    #             break
+
     def update_encoder_freeze(self, epoch):
         self.current_epoch = epoch
         if epoch < 4:
-            # Keep all layers frozen for the first 7 epochs
+            # Keep all layers frozen for the first 3 epochs
             return
-        elif epoch < 5:
-            for param in self.encode_model.embedding.parameters():
-                param.requires_grad = True
-                logger.print(f"Unfroze: Updated Embedding Layer: {param.requires_grad}")
-            return
-
+        
+        # First unfreeze encoder layers gradually (epochs 4-7)
         i = 4
         for name, param in reversed(list(self.encode_model.transformer.encoder.named_parameters())):
             i += 1
-            if i - epoch <  0:
+            if i - epoch < 0:
                 param.requires_grad = True 
-                logger.print(f"Unfroze: i: {i}; Updated Layer {name}: {param.requires_grad}") 
+                logger.print(f"Unfroze: i: {i}; Updated Encoder Layer {name}: {param.requires_grad}") 
             else:              
                 break
+        
+        # Then unfreeze embedding layer at epoch 8
+        if epoch >= 55:
+            for name, param in self.encode_model.embedding.embedding.named_parameters():
+                param.requires_grad = True
+                logger.print(f"Unfroze: Updated Embedding Layer {name}: {param.requires_grad}")
+        
+        # Finally unfreeze positional encoder at epoch 9
+        if epoch >= 57:
+            for name, param in self.encode_model.embedding.positional_encoding.named_parameters():
+                param.requires_grad = True
+                logger.print(f"Unfroze: Updated Positional Encoder Layer {name}: {param.requires_grad}")
 
     def get_loss_weights(self, discount):
         '''
