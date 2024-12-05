@@ -91,6 +91,12 @@ def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32):
     return torch.tensor(betas_clipped, dtype=dtype)
 
 def apply_conditioning(x, conditions, action_dim):
+    """
+    This function applies conditioning to a given input tensor `x` based on a dictionary of conditions. 
+    For each time step `t` and its corresponding value `val` in the conditions dictionary, 
+    it updates the slice of `x` starting from `action_dim` index onwards at time step `t` with the value `val`.
+    The updated tensor `x` is then returned.
+    """
     for t, val in conditions.items():
         x[:, t, action_dim:] = val.clone()
     return x

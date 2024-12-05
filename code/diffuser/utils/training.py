@@ -115,7 +115,7 @@ class Trainer(object):
             for i in range(self.gradient_accumulate_every):
                 batch = next(self.dataloader)
                 batch = batch_to_device(batch, device=self.device)
-                loss, infos = self.model.loss(epoch, *batch)
+                loss, infos = self.model.loss(epoch, *batch) # batch : trajectories, conditions, returns, 参考 SequenceDataset.__getitem__()
                 loss = loss / self.gradient_accumulate_every
                 loss.backward()
 

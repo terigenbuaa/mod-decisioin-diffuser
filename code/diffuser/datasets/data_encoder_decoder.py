@@ -8,7 +8,6 @@ from torch.nn import Transformer
 import torch.optim as optim
 from sklearn.model_selection import train_test_split
 
-from torch.utils.tensorboard import SummaryWriter
 
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
@@ -229,6 +228,7 @@ def encode_data(model, obs_data):
 
 
 def tb_encode_data(model, obs_data): # madiff_clone env 
+    from torch.utils.tensorboard import SummaryWriter
     # Create a SummaryWriter instance
     writer = SummaryWriter('runs/encoder_graph')
     
@@ -297,16 +297,16 @@ def encode_data_batch(model, data):
     return results
 
 # # Example usage
-epoch = 200  # Use the best epoch found during training
+# epoch = 200  # Use the best epoch found during training
 # encoded_dim = 64 # Use the best encoded_dim found during training
 # home_dir = os.path.expanduser("~")
 
-model = load_encode_model(encoded_dim, f'final_checkpoint_epoch_{epoch}_encoded_dim_{encoded_dim}.pth')
+# model = load_encode_model(encoded_dim, f'final_checkpoint_epoch_{epoch}_encoded_dim_{encoded_dim}.pth')
  
 # data, _ = load_data()
 # data = data['observations']
 
-encoded_data = tb_encode_data(model, data)
+# encoded_data = tb_encode_data(model, data)
 
 # print(encoded_data.shape)
 

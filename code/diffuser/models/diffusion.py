@@ -410,15 +410,15 @@ class GaussianInvDynDiffusion(nn.Module):
         
         # Then unfreeze embedding layer at epoch 8
         if epoch >= 55:
-            for name, param in self.encode_model.embedding.embedding.named_parameters():
+            for name, param in self.encode_model.embedding.named_parameters():
                 param.requires_grad = True
                 logger.print(f"Unfroze: Updated Embedding Layer {name}: {param.requires_grad}")
         
         # Finally unfreeze positional encoder at epoch 9
         if epoch >= 57:
-            for name, param in self.encode_model.embedding.positional_encoding.named_parameters():
+            for param in self.encode_model.positional_encoding:
                 param.requires_grad = True
-                logger.print(f"Unfroze: Updated Positional Encoder Layer {name}: {param.requires_grad}")
+                logger.print(f"Unfroze: Updated Positional Encoder Layer: {param.requires_grad}")
 
     def get_loss_weights(self, discount):
         '''
@@ -610,7 +610,7 @@ class GaussianInvDynDiffusion(nn.Module):
             x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
             a_t = a_t.reshape(-1, self.action_dim)
             if self.ar_inv:
-                inv_loss = self.inv_model.calc_loss(x_comb_t, a_t)
+                inv_loss = self.inv_model.calc_loss(x_comb_t, a_t) 
             else:
                 pred_a_t = self.inv_model(x_comb_t)
                 inv_loss = F.mse_loss(pred_a_t, a_t)
