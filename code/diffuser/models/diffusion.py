@@ -13,7 +13,10 @@ from .helpers import (
 )
 from ml_logger import logger
 
-from diffuser.datasets.data_encoder_decoder import load_encode_model, encode_data
+from diffuser.datasets.data_encoder_decoder import load_encode_model, encode_data, decode_data
+from diffuser.datasets.grid import make_env, state_processer, grid_config, my_agent
+
+grid_config.balance_mid_val = torch.tensor(grid_config.mid_val, dtype=torch.float32).to(grid_config.device)
 
 class GaussianDiffusion(nn.Module):
     def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
@@ -553,7 +556,7 @@ class GaussianInvDynDiffusion(nn.Module):
         cond = encode_data(self.encode_model, cond)
         noise = torch.randn_like(x_start)
 
-        x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
+        x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise) # shape: [32, 100, 64]
         x_noisy = apply_conditioning(x_noisy, cond, 0)
 
         x_recon = self.model(x_noisy, cond, t, returns)
@@ -568,7 +571,20 @@ class GaussianInvDynDiffusion(nn.Module):
         else:
             loss, info = self.loss_fn(x_recon, x_start)
 
-        return loss, info
+        obs = x_noisy - x_recon
+        # decode obs to 409 dim
+        decoded_obs = decode_data(self.encode_model, obs)
+        # assert decoded_obs.shape == (32, 100, 409)
+        x_t = obs[:, :-1, :]
+        x_t_1 = obs[:, 1:, :]
+        x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
+        x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
+        pred_a = self.inv_model(x_comb_t)
+
+        # get pred_a by inv_model from generated x_t and x_t_1
+        balance_loss = self.calculate_balance_loss(decoded_obs, pred_a.reshape(grid_config.batch_size, 99, self.action_dim))
+
+        return loss, info, balance_loss
 
     def loss(self, epoch, x, cond, returns=None):
         if self.current_epoch != epoch: 
@@ -598,10 +614,11 @@ class GaussianInvDynDiffusion(nn.Module):
         else:
             batch_size = len(x)
             t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
+            obs = x[:,:,self.action_dim:]
             # encode observation
-            x_encoded = encode_data(self.encode_model, x[:,:,self.action_dim:])
+            x_encoded = encode_data(self.encode_model, obs)
             # x[:,:,self.action_dim:] = x_encoded
-            diffuse_loss, info = self.p_losses(x_encoded, cond, t, returns)
+            diffuse_loss, info, balance_loss = self.p_losses(x_encoded, cond, t, returns)
             # Calculating inv loss
             x_t = x_encoded[:, :-1, :]
             a_t = x[:, :-1, :self.action_dim]
@@ -615,9 +632,68 @@ class GaussianInvDynDiffusion(nn.Module):
                 pred_a_t = self.inv_model(x_comb_t)
                 inv_loss = F.mse_loss(pred_a_t, a_t)
 
-            loss = (1 / 2) * (diffuse_loss + inv_loss)
+            # balance_loss = self.calculate_balance_loss(obs, pred_a_t.reshape(batch_size, 99, self.action_dim))
+
+            loss = (1 / 3) * (diffuse_loss + inv_loss + balance_loss)
 
         return loss, info
+    
+    def calculate_balance_loss(self, obs_horizon, action_horizon):
+        # 目前只取了整个horizon的第一个元素
+        obs = obs_horizon[:, 0, :]
+        action = action_horizon[:, 0, :].clone()
+        # set balance redispatch to 0
+        action[:, :grid_config.n_gen][:, grid_config.name_gen == 'balance'] = 0.
+        # split action by fixed position
+        adjust_gen_p = action[:, grid_config.detail_action_dim[0][0]: grid_config.detail_action_dim[0][1]]
+        adjust_storage_p = action[:, grid_config.detail_action_dim[1][0]: grid_config.detail_action_dim[1][1]]
+        # split obs by fixed position
+        balance_p, gen_p, load_p, storage_p = self.split_obs(obs, move_balance=True)
+        # print('adjust_gen_p', adjust_gen_p.shape)
+        # print('adjust_storage_p', adjust_storage_p.shape)
+        # print('gen_p', gen_p.shape)
+        # print('load_p', load_p.shape)
+        # print('storage_p', storage_p.shape)
+        # print('balance_p', balance_p.shape)
+        predict_gen_p = torch.sum(gen_p, dim=-1) + torch.sum(adjust_gen_p, dim=-1)
+        predict_load_p = torch.sum(load_p, dim=-1)
+        predict_storage_p = torch.sum(adjust_storage_p, dim=-1)
+        predict_loss = balance_p.squeeze(-1) + torch.sum(gen_p, dim=-1) - torch.sum(load_p, dim=-1) - torch.sum(adjust_storage_p, dim=-1)
+        predict_balance_p = predict_load_p + predict_storage_p + predict_loss - predict_gen_p
+        # print('-------------------------------')
+        # print('predict_gen_p', predict_gen_p)
+        # print('predict_load_p', predict_load_p)
+        # print('predict_storage_p', predict_storage_p)
+        # print('predict_loss', predict_loss)
+        # print('predict_balance_p', predict_balance_p)
+        # print('balance_p', balance_p.squeeze(-1))
+        # print('balance_p', balance_p.squeeze(-1) - torch.sum(adjust_gen_p, dim=-1))
+        if grid_config.split_balance_loss:
+            balance_loss_rate = torch.where((predict_balance_p >= grid_config.warning_region_lower) &
+                                            (predict_balance_p <= grid_config.warning_region_upper),
+                                            grid_config.warning_balance_loss_rate, grid_config.danger_balance_loss_rate)
+            balance_loss_rate = torch.where((predict_balance_p >= grid_config.save_region_lower) &
+                                            (predict_balance_p <= grid_config.save_region_upper),
+                                            grid_config.save_balance_loss_rate, balance_loss_rate)
+        else:
+            balance_loss_rate = grid_config.balance_loss_rate
+        # not_dones = (-dones + 1).squeeze(-1)
+        # return (((next_predict_balance_p - self.balance_mid_val) ** 2) * balance_loss_rate * not_dones).mean()
+        # print('predict_balance_p', predict_balance_p)
+        # print('balance_loss_rate', balance_loss_rate)
+        return (((predict_balance_p - grid_config.balance_mid_val) ** 2) * balance_loss_rate).mean()
+    
+    def split_obs(self, obs, move_balance=True):
+        gen_p = obs[:, 0:grid_config.n_gen]
+        load_p = obs[:, grid_config.n_gen:
+                        grid_config.n_gen + grid_config.n_load]
+        storage_power = obs[:, grid_config.n_gen + grid_config.n_load:
+                               grid_config.n_gen + grid_config.n_load + grid_config.n_storage] \
+            # if grid_config.storage_available else None
+        balance_p = gen_p[:, grid_config.name_gen == 'balance']
+        gen_p[:, grid_config.name_gen == 'balance'] *= (1. - move_balance)
+
+        return balance_p, gen_p, load_p, storage_power
 
     def forward(self, cond, *args, **kwargs):
         return self.conditional_sample(cond=cond, *args, **kwargs)

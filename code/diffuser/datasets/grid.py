@@ -73,8 +73,8 @@ parser.add_argument('--lr_decay_step_size', default=400 )
 parser.add_argument('--lr_decay_gamma', default=0.9 )
 parser.add_argument('--init_action_std', default=0.01 )
 parser.add_argument('--min_action_std', default=0.01 )
-parser.add_argument('--batch_size', default=1024 )
-parser.add_argument('--mini_batch_size', default=128 )
+parser.add_argument('--batch_size', default=32 )
+parser.add_argument('--mini_batch_size', default=32 )
 parser.add_argument('--sample_data', default=1 )
 parser.add_argument('--sample_data_dir', default="/home/terigen/grid2op_mod/sample_data/2" )
 parser.add_argument('--sampel_step_num', default=1000000 )
@@ -135,6 +135,19 @@ def load_environment(name, **kwargs):
 
 
 grid_config = parser.parse_args()
+grid_config.device = "cuda"
+# set data to calculate split balance loss
+if grid_config.split_balance_loss:
+    grid_config.danger_balance_loss_rate = torch.tensor([
+        grid_config.danger_region_balance_loss_rate for _ in range(grid_config.mini_batch_size if grid_config.use_mini_batch else grid_config.batch_size)
+    ]).to(grid_config.device)
+    grid_config.warning_balance_loss_rate = torch.tensor([
+        grid_config.warning_region_balance_loss_rate for _ in range(grid_config.mini_batch_size if grid_config.use_mini_batch else grid_config.batch_size)
+    ]).to(grid_config.device)
+    grid_config.save_balance_loss_rate = torch.tensor([
+        grid_config.save_region_balance_loss_rate for _ in range(grid_config.mini_batch_size if grid_config.use_mini_batch else grid_config.batch_size)
+    ]).to(grid_config.device)
+
 param = set_config_for_env(grid_config)
 null_env = make_env(param, grid_config)
 # # set basic info in config

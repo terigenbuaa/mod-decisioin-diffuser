@@ -225,6 +225,24 @@ def encode_data(model, obs_data):
         return obs_data
     else:
         return encoded_data
+    
+def decode_data(model, encoded_data):
+    if type(encoded_data) == dict:
+        data = encoded_data[0]
+    else:
+        data = encoded_data
+
+    # Pass through transformer decoder
+    decoded_data = model.transformer.decoder(data, data)
+
+    # Pass through output embedding layer
+    output_data = model.output_embedding(data)
+
+    if type(encoded_data) == dict:
+        encoded_data[0] = output_data
+        return encoded_data
+    else:
+        return output_data
 
 
 def tb_encode_data(model, obs_data): # madiff_clone env 

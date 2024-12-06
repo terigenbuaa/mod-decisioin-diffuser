@@ -109,7 +109,7 @@ class Trainer(object):
     #-----------------------------------------------------------------------------#
 
     def train(self, epoch, n_train_steps):
-
+        torch.autograd.set_detect_anomaly(True)
         timer = Timer()
         for step in range(n_train_steps):
             for i in range(self.gradient_accumulate_every):
