@@ -369,8 +369,8 @@ class GaussianInvDynDiffusion(nn.Module):
             logger.print(f"load encode model from {checkpoint_path}")  
 
             # freeze encode model
-            for param in self.encode_model.parameters():
-                param.requires_grad = False
+            # for param in self.encode_model.parameters():
+            #     param.requires_grad = False
                    
             self.observation_dim = encoded_dim
             self.current_epoch = None
@@ -594,7 +594,8 @@ class GaussianInvDynDiffusion(nn.Module):
             new_epoch = False
 
         if new_epoch:
-            self.update_encoder_freeze(self.current_epoch)
+            # self.update_encoder_freeze(self.current_epoch)
+            pass
 
         if self.train_only_inv:
             # Calculating inv loss

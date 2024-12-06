@@ -5,4 +5,5 @@ weights
 *.pt
 *.err
 *.vscode
+*.yml
 __prefix__ 
