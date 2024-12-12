@@ -140,6 +140,7 @@ def main(**deps):
         n_reference=Config.n_reference,
         train_device=Config.device,
         save_checkpoints=Config.save_checkpoints,
+        eval_in_train=Config.eval_in_train,
     )
 
     # -----------------------------------------------------------------------------#

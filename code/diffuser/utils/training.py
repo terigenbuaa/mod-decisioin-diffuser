@@ -11,6 +11,10 @@ from .arrays import batch_to_device, to_np, to_device, apply_dict
 from .timer import Timer
 from .cloud import sync_logs
 from ml_logger import logger
+from utils import set_seed, set_config_for_env
+from diffuser.utils.arrays import to_torch
+
+from diffuser.datasets.grid import make_env, state_processer, grid_config, my_agent
 
 def cycle(dl):
     while True:
@@ -56,6 +60,7 @@ class Trainer(object):
         bucket=None,
         train_device='cuda',
         save_checkpoints=False,
+        eval_in_train=False,
     ):
         super().__init__()
         self.model = diffusion_model
@@ -92,6 +97,7 @@ class Trainer(object):
         self.step = 0
 
         self.device = train_device
+        self.eval_in_train = eval_in_train
 
     def reset_parameters(self):
         self.ema_model.load_state_dict(self.model.state_dict())
@@ -108,6 +114,7 @@ class Trainer(object):
 
     def train(self, n_train_steps):
 
+        round_best, rtgs_best = 0, 0
         timer = Timer()
         for step in range(n_train_steps):
             for i in range(self.gradient_accumulate_every):
@@ -124,7 +131,14 @@ class Trainer(object):
                 self.step_ema()
 
             if self.step % self.save_freq == 0:
-                self.save()
+                # evaluate in training
+                if self.eval_in_train:
+                    round, rtgs = self.eval()
+                    if round_best < round:
+                        logger.print(f'best round found! step:{self.step}')
+                        self.save()
+                else:
+                    self.save()
 
             if self.step % self.log_freq == 0:
                 infos_str = ' | '.join([f'{key}: {val:8.4f}' for key, val in infos.items()])
@@ -150,6 +164,72 @@ class Trainer(object):
 
             self.step += 1
 
+    def eval(self, rounds_num=20):
+        num_eval = 1
+        device = self.device
+        episode_rewards = []
+        rounds = []
+
+        # encode_model checkpoint
+        # checkpoint_path = '/home/LAB/terigen/grid2op_mod/grid2op/MakeEnv/checkpoint_epoch_50_encoded_dim_64.pth'
+
+        for i in range(rounds_num):
+            episode_reward = 0
+            param = set_config_for_env(grid_config)
+            env = make_env(param, grid_config)
+
+            # assert trainer.ema_model.condition_guidance_w == Config.condition_guidance_w
+            returns = to_device(0.9 * torch.ones(num_eval, 1), device) # TODO hard coded 0.9 test_ret
+
+            t = 0
+            env.set_id(np.random.randint(0, grid_config.total_chronics, 1)[0])
+            obs = env.reset()
+            env.fast_forward_chronics(np.random.randint(0, grid_config.env_start_range, 1)[0])
+
+            for timestep in range(grid_config.max_timestep):
+        
+                env_obs = env.get_obs()
+                origin_obs, _ = state_processer(env_obs)
+                # Reshape the observation from [409] to [1, 409]
+                origin_obs = origin_obs.reshape(1, -1)
+                # origin_obs = dataset.normalizer.normalize(torch.Tensor.cpu(origin_obs), 'observations')
+                origin_obs = self.dataset.normalizer.normalize(origin_obs, 'observations')
+
+                # obs = encode_data(encode_model, to_torch(origin_obs))
+                obs = origin_obs
+                # import pdb; pdb.set_trace()
+                
+                conditions = {0: to_torch(obs, device=device)}
+                samples = self.ema_model.conditional_sample(conditions, returns=returns) 
+                obs_comb = torch.cat([samples[:, 0, :], samples[:, 1, :]], dim=-1)
+                obs_comb = obs_comb.reshape(-1, 2*self.dataset.observation_dim)
+                action = self.ema_model.inv_model(obs_comb)
+
+                samples = to_np(samples)
+                action = to_np(action)
+
+                action = self.dataset.normalizer.unnormalize(action, 'actions')
+
+                action_low, action_high = my_agent.process_action_space(env_obs)
+                interact_action, _ = my_agent.process_action(obs=env_obs , action=action[0], action_low=action_low, action_high=action_high)
+                this_obs, this_reward, this_done, info = env.step(interact_action) 
+                logger.print(f"timestep:{timestep},this_reward:{this_reward},this_done:{this_done}")
+                origin_obs, _ = state_processer(this_obs)
+                episode_reward += this_reward
+
+                if this_done:
+                    logger.print(f"Episode ({i}): {episode_reward}, rounds: {timestep}", color='green')
+                    logger.print(f"----------- info: {info['exception']} ---------------")
+                    rounds.append(timestep)
+                    episode_rewards.append(episode_reward)
+                    break
+        
+            mean_round = sum(rounds)/len(rounds)
+            mean_rtgs = sum(episode_rewards)/len(episode_rewards)
+            logger.print(f"mean round: {mean_round}")
+            logger.print(f"mean rtgs: {mean_rtgs}")
+            return mean_round, mean_rtgs
+    
     def save(self):
         '''
             saves model and ema to disk;
@@ -170,17 +250,38 @@ class Trainer(object):
         torch.save(data, savepath)
         logger.print(f'[ utils/training ] Saved model to {savepath}')
 
-    def load(self):
+
+    def load(self, step=None):
         '''
             loads model and ema from disk
         '''
-        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint/state.pt')
+        if step is None:
+            step = self.get_max_step()
+        loadpath = os.path.join(self.bucket, logger.prefix, f'checkpoint/state_{step}.pt')
+        # import pdb; pdb.set_trace()
         # data = logger.load_torch(loadpath)
-        data = torch.load(loadpath)
+        try:
+            data = torch.load(loadpath)
+        except FileNotFoundError:
+            logger.print(f"Error: Could not find checkpoint file at {loadpath}", color='red')
+            raise
+        except Exception as e:
+            logger.print(f"Error loading checkpoint: {str(e)}", color='red')
+            raise
+        logger.print(f"model loaded from path: {loadpath}")
 
         self.step = data['step']
         self.model.load_state_dict(data['model'])
         self.ema_model.load_state_dict(data['ema'])
+         # Also load optimizer state if it was saved
+        if 'optimizer' in data:
+            self.optimizer.load_state_dict(data['optimizer'])
+
+        # self.model.encode_model = load_encode_model(64, os.path.join(self.bucket, logger.prefix, f'checkpoint/encode_model_epoch_{step}_dim_64.pth'))
+
+        self.epoch = self.step // 10000
+
+        logger.print(f"load done!!!")
 
     #-----------------------------------------------------------------------------#
     #--------------------------------- rendering ---------------------------------#

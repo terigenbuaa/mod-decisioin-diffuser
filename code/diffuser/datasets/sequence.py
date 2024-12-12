@@ -72,7 +72,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                 end = start + horizon
                 indices.append((i, start, end))
         indices = np.array(indices)
-        return indices
+        return indices[:100]
 
     def get_conditions(self, observations):
         '''

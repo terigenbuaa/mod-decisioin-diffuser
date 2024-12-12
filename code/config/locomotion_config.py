@@ -56,4 +56,6 @@ class Config(ParamsProto):
     n_saves = 5
     save_parallel = False
     n_reference = 8
-    save_checkpoints = False
+    save_checkpoints = True
+    load_step = None
+    eval_in_train = False
