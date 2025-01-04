@@ -49,7 +49,7 @@ def main(**deps):
     dataset = dataset_config()
     # renderer = render_config()
     # observation_dim = dataset.observation_dim
-    observation_dim = 64
+    observation_dim = Config.encoded_dim # encoded_dim to be set, TODO
     action_dim = dataset.action_dim
 
     # -----------------------------------------------------------------------------#
@@ -90,6 +90,7 @@ def main(**deps):
             returns_condition=Config.returns_condition,
             condition_guidance_w=Config.condition_guidance_w,
             device=Config.device,
+            encoded_dim=Config.encoded_dim,
         )
     else:
         model_config = utils.Config(

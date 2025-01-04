@@ -9,7 +9,7 @@ if __name__ == '__main__':
     import os
     home_dir = os.path.expanduser("~")
     os.chdir(os.path.join(home_dir, "mod-decision-diffuser/code/analysis"))
-    sweep = Sweep(RUN, Config).load("eval_debug.jsonl")
+    sweep = Sweep(RUN, Config).load("default_inv_eval.jsonl")
 
     for kwargs in sweep:
         logger.print(RUN.prefix, color='green')

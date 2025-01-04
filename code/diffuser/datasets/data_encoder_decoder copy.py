@@ -21,122 +21,66 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
-class GridVAE(nn.Module):
+class VAE(nn.Module):
 
 
     def __init__(self,
-                 in_channels: int,
+                 input_dim: int,
                  latent_dim: int,
                  hidden_dims: List = None,
                  **kwargs) -> None:
-        super(GridVAE, self).__init__()
+        super(VAE, self).__init__()
 
         self.latent_dim = latent_dim
 
-        modules = []
-        if hidden_dims is None:
-            hidden_dims = [32, 64, 128, 256, 512]
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+        )
+        self.mu_layer = nn.Linear(128, latent_dim)
+        self.logvar_layer = nn.Linear(128, latent_dim)
 
-        # Build Encoder
-        for h_dim in hidden_dims:
-            modules.append(
-                nn.Sequential(
-                    nn.Conv1d(in_channels, out_channels=h_dim,
-                              kernel_size= 3, stride= 2, padding  = 1),
-                    nn.BatchNorm1d(h_dim),
-                    nn.LeakyReLU())
-            )
-            in_channels = h_dim
-
-        self.encoder = nn.Sequential(*modules)
-        self.fc_mu = nn.Linear(hidden_dims[-1]*13, latent_dim)
-        self.fc_var = nn.Linear(hidden_dims[-1]*13, latent_dim)
-
-
-        # Build Decoder
-        modules = []
-
-        self.decoder_input = nn.Linear(latent_dim, hidden_dims[-1] * 13)
-
-        hidden_dims.reverse()
-
-        for i in range(len(hidden_dims) - 1):
-            modules.append(
-                nn.Sequential(
-                    nn.ConvTranspose1d(hidden_dims[i],
-                                       hidden_dims[i + 1],
-                                       kernel_size=3,
-                                       stride = 2,
-                                       padding=1,
-                                       output_padding=1),
-                    nn.BatchNorm1d(hidden_dims[i + 1]),
-                    nn.LeakyReLU())
-            )
+        # 解码器
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, input_dim),
+            nn.Sigmoid()  # 假设输入数据在0到1之间
+        )
 
 
-
-        self.decoder = nn.Sequential(*modules)
-
-        self.final_layer = nn.Sequential(
-                            nn.ConvTranspose1d(hidden_dims[-1],
-                                               hidden_dims[-1],
-                                               kernel_size=3,
-                                               stride=2,
-                                               padding=4,
-                                               output_padding=0),
-                            nn.BatchNorm1d(hidden_dims[-1]),
-                            nn.LeakyReLU(),
-                            nn.Conv1d(hidden_dims[-1], out_channels= 1,
-                                      kernel_size= 3, padding= 1),
-                            nn.Tanh())
-
-    def encode(self, input: Tensor) -> List[Tensor]:
-        """
-        Encodes the input by passing through the encoder network
-        and returns the latent codes.
-        :param input: (Tensor) Input tensor to encoder [N x C x H x W]
-        :return: (Tensor) List of latent codes
-        """
-        result = self.encoder(input)
-        result = torch.flatten(result, start_dim=1)
-
-        # Split the result into mu and var components
-        # of the latent Gaussian distribution
-        mu = self.fc_mu(result)
-        log_var = self.fc_var(result)
-
-        return [mu, log_var]
-
-    def decode(self, z: Tensor) -> Tensor:
-        """
-        Maps the given latent codes
-        onto the image space.
-        :param z: (Tensor) [B x D]
-        :return: (Tensor) [B x C x H x W]
-        """
-        result = self.decoder_input(z)
-        result = result.view(-1, 512, 13)
-        result = self.decoder(result)
-        result = self.final_layer(result)
-        return result
-
-    def reparameterize(self, mu: Tensor, logvar: Tensor) -> Tensor:
-        """
-        Reparameterization trick to sample from N(mu, var) from
-        N(0,1).
-        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-        :return: (Tensor) [B x D]
-        """
+    def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
-        return eps * std + mu
+        return mu + eps * std
 
-    def forward(self, input: Tensor, **kwargs) -> List[Tensor]:
-        mu, log_var = self.encode(input)
-        z = self.reparameterize(mu, log_var)
-        return  [self.decode(z), input, mu, log_var]
+    def forward(self, input: Tensor, **kwargs):
+        # 编码
+        encoded = self.encoder(input)
+        mu = self.mu_layer(encoded)
+        logvar = self.logvar_layer(encoded)
+        z = self.reparameterize(mu, logvar)
 
+        # 解码
+        decoded = self.decoder(z)
+        return [decoded, input, mu, logvar]
+    
+    def encode(self, input: Tensor):
+        encoded = self.encoder(input)
+        mu = self.mu_layer(encoded)
+        logvar = self.logvar_layer(encoded)
+        z = self.reparameterize(mu, logvar)
+        return z
+    
+    def decode(self, z: Tensor):
+        decoded = self.decoder(z)
+        return decoded
+
+    
     def loss_function(self,
                       *args,
                       **kwargs) -> dict:
@@ -151,6 +95,8 @@ class GridVAE(nn.Module):
         input = args[1]
         mu = args[2]
         log_var = args[3]
+
+        mu, log_var = mu.squeeze(), log_var.squeeze()
 
         kld_weight = kwargs['M_N'] # Account for the minibatch samples from the dataset
         recons_loss =F.mse_loss(recons, input)
@@ -188,6 +134,7 @@ class GridVAE(nn.Module):
         """
 
         return self.forward(x)[0]
+    
 
 # Hyperparameters
 input_dim = 409       # Dimension of the input data
@@ -200,10 +147,10 @@ num_epochs = 200       # Number of epochs
 batch_size = 32       # Batch size
 encoded_dims = [8, 16, 32, 64]
 
-encoded_dim = 8
+encoded_dim = 64
 
 # Instantiate the model
-model = GridVAE(input_dim, encoded_dim)
+model = VAE(input_dim, encoded_dim)
 
 # Define loss function and optimizer
 criterion = nn.MSELoss()  # For regression tasks
@@ -308,7 +255,7 @@ def train_and_evaluate(encoded_dim):
     return avg_epoch_loss, val_loss
 
 def load_encode_model(encoded_dim, checkpoint_path):
-    model = GridVAE(1, encoded_dim)
+    model = VAE(input_dim, encoded_dim)
     try:
         checkpoint = torch.load(checkpoint_path, map_location='cpu' if not torch.cuda.is_available() else None)
         # Extract the model state dict from the Lightning checkpoint
@@ -339,17 +286,15 @@ def save_encode_model(model, encoded_dim, epoch, save_dir=None):
 
 def encode_data(model, obs_data):
     if type(obs_data) == dict:
-        data = obs_data[0].reshape(-1, 1, 409)
-        mu, logvar = model.encode(data)
-        encoded_data = model.reparameterize(mu, logvar)
+        data = obs_data[0]
+    else:
+        data = obs_data
+    encoded_data = model.encode(data)
+    if type(obs_data) == dict:
         obs_data[0] = encoded_data
         return obs_data
-    data = obs_data.reshape(-1, 1, 409)
-    mu, logvar = model.encode(data)
-    encoded_data = model.reparameterize(mu, logvar)
-    encoded_data = encoded_data.reshape(-1, 100, encoded_dim)
-    
-    return encoded_data
+    else:
+        return encoded_data
     
 def decode_data(model, data):
     """
