@@ -87,9 +87,9 @@ class GaussianInvDynDiffusion(nn.Module):
 
         if load_pre_encoder:
             # Example usage
-            encoded_dim = 8 # Use the best encoded_dim found during training
+            encoded_dim = observation_dim # Use the best encoded_dim found during training
             home_dir = os.path.expanduser("~")
-            checkpoint_path = os.path.join(home_dir, "mod-decision-diffuser/code/diffuser/datasets/last_8.ckpt")  
+            checkpoint_path = os.path.join(home_dir, "/home/LAB/terigen/PyTorch-VAE/logs-new-grid/GridVAE/GridVAE_lr0.001_lat64_kld0.01/checkpoints/last.ckpt")  
             # checkpoint_path = os.path.join(home_dir, "grid2op_mod/grid2op/MakeEnv/checkpoint_epoch_50_encoded_dim_64.pth")
             self.encode_model = load_encode_model(encoded_dim, checkpoint_path)  
             logger.print(f"load encode model from {checkpoint_path}")  

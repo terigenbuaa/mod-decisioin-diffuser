@@ -13,6 +13,8 @@ from tqdm import tqdm
 
 from typing import List, Callable, Union, Any, TypeVar, Tuple
 
+from config.locomotion_config import Config
+
 Tensor = TypeVar('torch.tensor')
 home_dir = os.path.expanduser("~")
 
@@ -198,9 +200,9 @@ num_layers = 4        # Number of Transformer layers
 learning_rate = 0.001 # Learning rate
 num_epochs = 200       # Number of epochs
 batch_size = 32       # Batch size
-encoded_dims = [8, 16, 32, 64]
+# encoded_dims = [8, 16, 32, 64]
 
-encoded_dim = 8
+encoded_dim = Config.encoded_dim
 
 # Instantiate the model
 model = GridVAE(input_dim, encoded_dim)
@@ -337,13 +339,22 @@ def save_encode_model(model, encoded_dim, epoch, save_dir=None):
     torch.save(model.state_dict(), model_path)
     
 
-def encode_data(model, obs_data):
+def encode_data(model, obs_data, eval=False):
     if type(obs_data) == dict:
         data = obs_data[0].reshape(-1, 1, 409)
         mu, logvar = model.encode(data)
         encoded_data = model.reparameterize(mu, logvar)
         obs_data[0] = encoded_data
         return obs_data
+    
+    if eval:
+        data = obs_data.unsqueeze(0)  # Add batch dimension: [1, channel, dim]
+        mu, logvar = model.encode(data)
+        encoded_data = model.reparameterize(mu, logvar)
+        return encoded_data
+    else:  # If input is [batch, channel, dim]
+        data = obs_data
+
     data = obs_data.reshape(-1, 1, 409)
     mu, logvar = model.encode(data)
     encoded_data = model.reparameterize(mu, logvar)

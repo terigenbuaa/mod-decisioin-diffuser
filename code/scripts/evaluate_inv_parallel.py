@@ -83,7 +83,7 @@ def evaluate(**deps):
     # renderer = render_config()
 
     # observation_dim = dataset.observation_dim
-    observation_dim = 64
+    observation_dim = Config.encoded_dim
     action_dim = dataset.action_dim
 
     if Config.diffusion == 'models.GaussianInvDynDiffusion':
@@ -180,7 +180,7 @@ def evaluate(**deps):
             # origin_obs = dataset.normalizer.normalize(torch.Tensor.cpu(origin_obs), 'observations')
             origin_obs = dataset.normalizer.normalize(origin_obs, 'observations')
 
-            obs = encode_data(trainer.model.encode_model, to_torch(origin_obs))
+            obs = encode_data(trainer.model.encode_model, to_torch(origin_obs), eval=True)
             # obs = origin_obs
             # import pdb; pdb.set_trace()
             

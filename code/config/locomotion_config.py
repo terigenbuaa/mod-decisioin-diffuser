@@ -21,7 +21,7 @@ class Config(ParamsProto):
     dim_mults = (1, 4, 8)
     returns_condition = True
     calc_energy=False
-    dim=32
+    dim=128
     condition_dropout=0.25
     condition_guidance_w = 1.2
     test_ret=0.9
@@ -57,5 +57,5 @@ class Config(ParamsProto):
     save_parallel = False
     n_reference = 8
     save_checkpoints = True
-    encoded_dim = 8
+    encoded_dim = 64
     load_step = None
