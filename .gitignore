@@ -7,3 +7,4 @@ weights
 *.vscode
 *.yml
 __prefix__ 
+*dropout_0.25*
