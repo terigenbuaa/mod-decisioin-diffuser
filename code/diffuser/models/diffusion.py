@@ -95,8 +95,8 @@ class GaussianInvDynDiffusion(nn.Module):
             logger.print(f"load encode model from {checkpoint_path}")  
 
             # freeze encode model
-            # for param in self.encode_model.parameters():
-            #     param.requires_grad = False
+            for param in self.encode_model.parameters():
+                param.requires_grad = False
                    
             self.observation_dim = encoded_dim
             self.current_epoch = None
@@ -128,8 +128,8 @@ class GaussianInvDynDiffusion(nn.Module):
             return
         
         # First unfreeze encoder layers gradually (epochs 4-7)
-        i = 4
-        for name, param in reversed(list(self.encode_model.transformer.encoder.named_parameters())):
+        i = 17 # TODO: 为了继续训练并解冻，写死了
+        for name, param in reversed(list(self.encode_model.encoder.named_parameters())):
             i += 1
             if i - epoch < 0:
                 param.requires_grad = True 
@@ -137,17 +137,6 @@ class GaussianInvDynDiffusion(nn.Module):
             else:              
                 break
         
-        # Then unfreeze embedding layer at epoch 8
-        if epoch >= 55:
-            for name, param in self.encode_model.embedding.named_parameters():
-                param.requires_grad = True
-                logger.print(f"Unfroze: Updated Embedding Layer {name}: {param.requires_grad}")
-        
-        # Finally unfreeze positional encoder at epoch 9
-        if epoch >= 57:
-            for param in self.encode_model.positional_encoding:
-                param.requires_grad = True
-                logger.print(f"Unfroze: Updated Positional Encoder Layer: {param.requires_grad}")
 
     def get_loss_weights(self, discount):
         '''
@@ -331,8 +320,8 @@ class GaussianInvDynDiffusion(nn.Module):
             new_epoch = False
 
         if new_epoch:
-            # self.update_encoder_freeze(self.current_epoch)
-            pass
+            self.update_encoder_freeze(self.current_epoch)
+            # pass
 
         if self.train_only_inv:
             # Calculating inv loss

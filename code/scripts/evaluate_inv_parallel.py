@@ -13,6 +13,50 @@ from utils import set_seed, set_config_for_env
 from diffuser.datasets.grid import make_env, state_processer, grid_config, my_agent
 from diffuser.datasets.data_encoder_decoder import load_encode_model, encode_data
 
+from diffuser.datasets.grid import grid_config, null_env
+
+
+def process_action_space(obs):
+    # get action limit
+    action_low = [-obs.gen_margin_down]
+    action_high = [obs.gen_margin_up]
+    if grid_config.storage_available:
+        action_low.append(-grid_config.storage_max_p_prod)
+        action_high.append(grid_config.storage_max_p_absorb)
+    # concatenate action limit
+    action_low = np.concatenate(action_low, axis=0)
+    action_high = np.concatenate(action_high, axis=0)
+
+    return action_low, action_high
+
+def process_action(obs, action, action_low, action_high, env):
+        # set balance redispatch to 0
+        action[:grid_config.n_gen][grid_config.name_gen == 'balance'] = 0.
+        # clip action to action space
+        clip_action = np.clip(action, action_low, action_high).reshape(-1)
+        # split action by fixed position
+        adjust_gen_p = clip_action[grid_config.detail_action_dim[0][0]: grid_config.detail_action_dim[0][1]]
+        adjust_storage_p = clip_action[grid_config.detail_action_dim[1][0]: grid_config.detail_action_dim[1][1]]
+        # set action to regular format
+        # adjust_gen_p[abs(adjust_gen_p) < 0.1] = 0
+        adjust_gen_p[obs.gen_p == 0] = 0
+        interact_action = env.action_space({})
+        interact_action.redispatch = adjust_gen_p
+        # try to reconnect all line that is disconnected
+        reconnect_line = np.argwhere((~obs.line_status) & (obs.time_before_cooldown_line == 0)).reshape(-1)
+        line_set_status = []
+        for line_id in reconnect_line:
+            line_set_status.append((line_id, 1))
+        # if len(reconnect_line) > 0:
+        #     interact_action.line_set_status = line_set_status
+        interact_action.line_set_status = line_set_status
+        if grid_config.storage_available:
+            interact_action.storage_p = adjust_storage_p
+
+        print('interact_action', interact_action)
+        print('clip_action', clip_action)
+        
+        return interact_action, clip_action
 
 def evaluate(**deps):
     from ml_logger import logger, RUN
@@ -195,8 +239,8 @@ def evaluate(**deps):
 
             action = dataset.normalizer.unnormalize(action, 'actions')
 
-            action_low, action_high = my_agent.process_action_space(env_obs)
-            interact_action, _ = my_agent.process_action(obs=env_obs , action=action[0], action_low=action_low, action_high=action_high)
+            action_low, action_high = process_action_space(env_obs)
+            interact_action, _ = process_action(env_obs , action[0], action_low, action_high, env)
             this_obs, this_reward, this_done, info = env.step(interact_action) 
             # logger.print(f"timestep:{timestep},this_reward:{this_reward},this_done:{this_done}")
             origin_obs, _ = state_processer(this_obs)
