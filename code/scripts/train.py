@@ -49,7 +49,10 @@ def main(**deps):
     dataset = dataset_config()
     # renderer = render_config()
     # observation_dim = dataset.observation_dim
-    observation_dim = Config.encoded_dim # encoded_dim to be set, TODO
+    if Config.load_pre_encoder:
+        observation_dim = Config.encoded_dim # encoded_dim to be set, TODO
+    else:
+        observation_dim = 409
     action_dim = dataset.action_dim
 
     # -----------------------------------------------------------------------------#
@@ -91,6 +94,7 @@ def main(**deps):
             condition_guidance_w=Config.condition_guidance_w,
             device=Config.device,
             encoded_dim=Config.encoded_dim,
+            load_pre_encoder=Config.load_pre_encoder,
         )
     else:
         model_config = utils.Config(
@@ -124,6 +128,7 @@ def main(**deps):
             returns_condition=Config.returns_condition,
             condition_guidance_w=Config.condition_guidance_w,
             device=Config.device,
+            load_pre_encoder=Config.load_pre_encoder,
         )
 
     trainer_config = utils.Config(

@@ -59,3 +59,4 @@ class Config(ParamsProto):
     save_checkpoints = True
     encoded_dim = 64
     load_step = None
+    load_pre_encoder = False

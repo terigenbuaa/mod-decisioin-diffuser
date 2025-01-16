@@ -38,12 +38,15 @@ class GaussianInvDynDiffusion(nn.Module):
             self.inv_model = nn.Sequential(
                 nn.Linear(2 * self.observation_dim, hidden_dim),
                 nn.ReLU(),
+                # nn.Dropout(0.2),  # 添加 Dropout 层
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
+                # nn.Dropout(0.2),  # 添加 Dropout 层
+                nn.Linear(hidden_dim, hidden_dim),  # 增加一层
                 nn.ReLU(),
-                nn.Linear(hidden_dim, self.action_dim),
             )
+            self.inv_head1 = nn.Linear(hidden_dim, self.action_dim)
+            self.inv_head2 = nn.Linear(hidden_dim, self.action_dim)
         self.returns_condition = returns_condition
         self.condition_guidance_w = condition_guidance_w
 
@@ -55,6 +58,7 @@ class GaussianInvDynDiffusion(nn.Module):
         self.n_timesteps = int(n_timesteps)
         self.clip_denoised = clip_denoised
         self.predict_epsilon = predict_epsilon
+        self.load_pre_encoder = load_pre_encoder
 
         self.register_buffer('betas', betas)
         self.register_buffer('alphas_cumprod', alphas_cumprod)
@@ -83,6 +87,7 @@ class GaussianInvDynDiffusion(nn.Module):
         ## get loss coefficients and initialize objective
         loss_weights = self.get_loss_weights(loss_discount)
         self.loss_fn = Losses['state_l2'](loss_weights)
+        self.current_epoch = None
         # import pdb; pdb.set_trace()
 
         if load_pre_encoder:
@@ -99,27 +104,7 @@ class GaussianInvDynDiffusion(nn.Module):
                 param.requires_grad = False
                    
             self.observation_dim = encoded_dim
-            self.current_epoch = None
-
-    # def update_encoder_freeze(self, epoch):
-    #     self.current_epoch = epoch
-    #     if epoch < 4:
-    #         # Keep all layers frozen for the first 7 epochs
-    #         return
-    #     elif epoch < 5:
-    #         for param in self.encode_model.embedding.parameters():
-    #             param.requires_grad = True
-    #             logger.print(f"Unfroze: Updated Embedding Layer: {param.requires_grad}")
-    #         return
-
-    #     i = 4
-    #     for name, param in reversed(list(self.encode_model.transformer.encoder.named_parameters())):
-    #         i += 1
-    #         if i - epoch <  0:
-    #             param.requires_grad = True 
-    #             logger.print(f"Unfroze: i: {i}; Updated Layer {name}: {param.requires_grad}") 
-    #         else:              
-    #             break
+    
 
     def update_encoder_freeze(self, epoch):
         self.current_epoch = epoch
@@ -268,7 +253,8 @@ class GaussianInvDynDiffusion(nn.Module):
         return sample
 
     def p_losses(self, x_start, cond, t, returns=None):
-        cond = encode_data(self.encode_model, cond) # shape of cond[0]: [32, 409]
+        if self.load_pre_encoder:
+            cond = encode_data(self.encode_model, cond) # shape of cond[0]: [32, 409]
         noise = torch.randn_like(x_start)
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise) # shape: [32, 100, 64]
@@ -286,30 +272,6 @@ class GaussianInvDynDiffusion(nn.Module):
         else:
             loss, info = self.loss_fn(x_recon, x_start)
 
-        obs = x_noisy - x_recon
-        # decode obs to 409 dim
-        # print("Before decode_data:")
-        # print(f"obs shape: {obs.shape}")
-        # print(f"obs requires_grad: {obs.requires_grad}")
-        # print(f"obs version: {obs._version}")
-        
-        decoded_obs = decode_data(self.encode_model, obs)
-        
-        # print("After decode_data:")
-        # print(f"decoded_obs shape: {decoded_obs.shape}")
-        # print(f"decoded_obs requires_grad: {decoded_obs.requires_grad}")
-        # print(f"decoded_obs version: {decoded_obs._version}")
-        
-        # assert decoded_obs.shape == (32, 100, 409)
-        x_t = obs[:, :-1, :]
-        x_t_1 = obs[:, 1:, :]
-        x_comb_t = torch.cat([x_t, x_t_1], dim=-1)
-        x_comb_t = x_comb_t.reshape(-1, 2 * self.observation_dim)
-        pred_a = self.inv_model(x_comb_t)
-
-        # get pred_a by inv_model from generated x_t and x_t_1
-        # balance_loss = self.calculate_balance_loss(decoded_obs, pred_a.reshape(grid_config.batch_size, 99, self.action_dim))
-
         return loss, info #, balance_loss
 
     def loss(self, epoch, x, cond, returns=None):
@@ -319,7 +281,7 @@ class GaussianInvDynDiffusion(nn.Module):
         else:
             new_epoch = False
 
-        if new_epoch:
+        if new_epoch & self.load_pre_encoder:
             self.update_encoder_freeze(self.current_epoch)
             # pass
 
@@ -342,8 +304,10 @@ class GaussianInvDynDiffusion(nn.Module):
             batch_size = len(x)
             t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
             obs = x[:,:,self.action_dim:]
-            # encode observation
-            x_encoded = encode_data(self.encode_model, obs)
+            if self.load_pre_encoder: # encode observation
+                x_encoded = encode_data(self.encode_model, obs)
+            else:
+                x_encoded = obs
             # x[:,:,self.action_dim:] = x_encoded
             # diffuse_loss, info, balance_loss = self.p_losses(x_encoded, cond, t, returns)
             diffuse_loss, info = self.p_losses(x_encoded, cond, t, returns)
@@ -357,7 +321,11 @@ class GaussianInvDynDiffusion(nn.Module):
             if self.ar_inv:
                 inv_loss = self.inv_model.calc_loss(x_comb_t, a_t) 
             else:
-                pred_a_t = self.inv_model(x_comb_t)
+                body_output = self.inv_model(x_comb_t)
+                head1_output = self.inv_head1(body_output)
+                head2_output = self.inv_head2(body_output)
+                gumbel_softmax_output = F.gumbel_softmax(head2_output, tau=1, hard=True)
+                pred_a_t = head1_output * gumbel_softmax_output
                 inv_loss = F.mse_loss(pred_a_t, a_t)
 
             # balance_loss = self.calculate_balance_loss(obs, pred_a_t.reshape(batch_size, 99, self.action_dim))

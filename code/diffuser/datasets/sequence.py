@@ -43,6 +43,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.fields = fields
         self.n_episodes = fields.n_episodes
         self.path_lengths = fields.path_lengths
+        
         self.normalize()
 
         print(fields)

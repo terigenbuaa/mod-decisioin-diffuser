@@ -174,7 +174,8 @@ class Trainer(object):
         torch.save(data, savepath)
         logger.print(f'[ utils/training ] Saved model to {savepath}')
 
-        save_encode_model(self.model.encode_model, 16, self.step, savedir)
+        if self.model.load_pre_encoder:
+            save_encode_model(self.model.encode_model, 16, self.step, savedir)
 
     def get_max_step(self):
         return 0
