@@ -48,7 +48,7 @@ def get_dataset(env):
             env: 环境对象，可能用于特定的处理
             pkl_file_path: 数据集的本地文件路径
         """
-    with open('/root/data_sampled.pkl', 'rb') as pkl_file:
+    with open('../diffuser/datasets/data/data_sampled.pkl', 'rb') as pkl_file:
         dataset = pickle.load(pkl_file)
 
     # index = dataset['data']['terminals'].index(True)

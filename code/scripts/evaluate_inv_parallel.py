@@ -1,6 +1,7 @@
 import diffuser.utils as utils
 from ml_logger import logger
 import torch
+import torch.nn.functional as F
 from copy import deepcopy
 import numpy as np
 import os
@@ -53,8 +54,8 @@ def process_action(obs, action, action_low, action_high, env):
         if grid_config.storage_available:
             interact_action.storage_p = adjust_storage_p
 
-        print('interact_action', interact_action)
-        print('clip_action', clip_action)
+        # print('interact_action', interact_action)
+        # print('clip_action', clip_action)
         
         return interact_action, clip_action
 
@@ -126,8 +127,10 @@ def evaluate(**deps):
     dataset = dataset_config()
     # renderer = render_config()
 
-    # observation_dim = dataset.observation_dim
-    observation_dim = Config.encoded_dim
+    if Config.load_pre_encoder:
+        observation_dim = Config.encoded_dim
+    else:
+        observation_dim = dataset.observation_dim
     action_dim = dataset.action_dim
 
     if Config.diffusion == 'models.GaussianInvDynDiffusion':
@@ -165,6 +168,7 @@ def evaluate(**deps):
         returns_condition=Config.returns_condition,
         device=Config.device,
         condition_guidance_w=Config.condition_guidance_w,
+        load_pre_encoder=Config.load_pre_encoder,
     )
 
     trainer_config = utils.Config(
@@ -224,8 +228,10 @@ def evaluate(**deps):
             # origin_obs = dataset.normalizer.normalize(torch.Tensor.cpu(origin_obs), 'observations')
             origin_obs = dataset.normalizer.normalize(origin_obs, 'observations')
 
-            obs = encode_data(trainer.model.encode_model, to_torch(origin_obs), eval=True)
-            # obs = origin_obs
+            if Config.load_pre_encoder:
+                obs = encode_data(trainer.model.encode_model, to_torch(origin_obs), eval=True)
+            else:
+                obs = origin_obs
             # import pdb; pdb.set_trace()
             
             conditions = {0: to_torch(obs, device=device)}
@@ -233,6 +239,10 @@ def evaluate(**deps):
             obs_comb = torch.cat([samples[:, 0, :], samples[:, 1, :]], dim=-1)
             obs_comb = obs_comb.reshape(-1, 2*observation_dim)
             action = trainer.ema_model.inv_model(obs_comb)
+            head1_out = trainer.ema_model.inv_head1(action)
+            head2_out = trainer.ema_model.inv_head2(action)
+            gumbel_softmax_output = F.gumbel_softmax(head2_out, tau=1, hard=True)
+            action = head1_out * gumbel_softmax_output
 
             samples = to_np(samples)
             action = to_np(action)
