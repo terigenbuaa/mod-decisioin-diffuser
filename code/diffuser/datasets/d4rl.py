@@ -3,6 +3,7 @@ import collections
 import numpy as np
 import gym
 import pdb
+import pickle
 
 from contextlib import (
     contextmanager,
@@ -35,22 +36,43 @@ def load_environment(name):
     with suppress_output():
         wrapped_env = gym.make(name)
     env = wrapped_env.unwrapped
-    env.max_episode_steps = wrapped_env._max_episode_steps
+    # env.max_episode_steps = wrapped_env._max_episode_steps
+    env.max_episode_steps = 13000
     env.name = name
     return env
 
 def get_dataset(env):
-    dataset = env.get_dataset()
+    """
+        加载本地数据集
+        Args:
+            env: 环境对象，可能用于特定的处理
+            pkl_file_path: 数据集的本地文件路径
+        """
+    with open('/root/data_sampled.pkl', 'rb') as pkl_file:
+        dataset = pickle.load(pkl_file)
 
+    # index = dataset['data']['terminals'].index(True)
+    # print(f"The first True is at index {index}")
+    # print(dataset['data'].keys())
+    # exit(0)
     if 'antmaze' in str(env).lower():
-        ## the antmaze-v0 environments have a variety of bugs
-        ## involving trajectory segmentation, so manually reset
-        ## the terminal and timeout fields
+        # 对于 antmaze 环境进行修正
         dataset = antmaze_fix_timeouts(dataset)
         dataset = antmaze_scale_rewards(dataset)
         get_max_delta(dataset)
 
-    return dataset
+    # subset_data = {}
+    # limit = 11  # 可调整为适合的数据大小限制
+    #
+    # for key, value in dataset['data'].items():
+    #     if isinstance(value, np.ndarray):  # 如果是 numpy 数组
+    #         subset_data[key] = value[:limit]
+    #     elif isinstance(value, list):  # 如果是列表
+    #         subset_data[key] = value[:limit]
+    #
+    # subset_data['terminals'][10] = True
+    # print(len(subset_data['rewards']))
+    return dataset['data']
 
 def sequence_dataset(env, preprocess_fn):
     """
@@ -70,6 +92,9 @@ def sequence_dataset(env, preprocess_fn):
     dataset = get_dataset(env)
     dataset = preprocess_fn(dataset)
 
+    if isinstance(dataset['rewards'], list):
+        dataset['rewards'] = np.array(dataset['rewards'])
+
     N = dataset['rewards'].shape[0]
     data_ = collections.defaultdict(list)
 
@@ -83,7 +108,7 @@ def sequence_dataset(env, preprocess_fn):
         if use_timeouts:
             final_timestep = dataset['timeouts'][i]
         else:
-            final_timestep = (episode_step == env._max_episode_steps - 1)
+            final_timestep = (episode_step == env.max_episode_steps - 1)
 
         for k in dataset:
             if 'metadata' in k: continue
@@ -96,7 +121,7 @@ def sequence_dataset(env, preprocess_fn):
                 episode_data[k] = np.array(data_[k])
             if 'maze2d' in env.name:
                 episode_data = process_maze2d_episode(episode_data)
-            yield episode_data
+            yield episode_data 
             data_ = collections.defaultdict(list)
 
         episode_step += 1

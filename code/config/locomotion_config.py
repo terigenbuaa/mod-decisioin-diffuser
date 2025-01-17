@@ -7,7 +7,7 @@ class Config(ParamsProto):
     seed = 100
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     bucket = '/home/LAB/terigen/weights/'
-    dataset = 'hopper-medium-expert-v2'
+    dataset = 'grid'
 
     ## model
     model = 'models.TemporalUnet'
@@ -35,7 +35,7 @@ class Config(ParamsProto):
     use_padding = True
     include_returns = True
     discount = 0.99
-    max_path_length = 1000
+    max_path_length = 10000
     hidden_dim = 256
     ar_inv = False
     train_only_inv = False

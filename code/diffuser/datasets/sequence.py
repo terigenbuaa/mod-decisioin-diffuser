@@ -8,7 +8,7 @@ from .d4rl import load_environment, sequence_dataset
 from .normalization import DatasetNormalizer
 from .buffer import ReplayBuffer
 
-from .grid import load_environment, sequence_dataset
+# from .grid import load_environment
 
 RewardBatch = namedtuple('Batch', 'trajectories conditions returns')
 Batch = namedtuple('Batch', 'trajectories conditions')
@@ -18,7 +18,7 @@ class SequenceDataset(torch.utils.data.Dataset):
 
     def __init__(self, env='hopper-medium-replay', horizon=64,
         normalizer='LimitsNormalizer', preprocess_fns=[], max_path_length=1000,
-        max_n_episodes=100, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False):
+        max_n_episodes=200, termination_penalty=0, use_padding=True, discount=0.99, returns_scale=1000, include_returns=False):
         self.preprocess_fn = get_preprocess_fn(preprocess_fns, env)
         self.env = env = load_environment(env)
         self.returns_scale = returns_scale
